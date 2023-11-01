@@ -1,5 +1,6 @@
 ---
 title: "IODS course project"
+author: "Laura Häkkinen"
 output:
   html_document:
     theme: cosmo

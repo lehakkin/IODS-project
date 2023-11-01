@@ -9,5 +9,52 @@
 date()
 
 ```
-The text continues here.
+## My experience
+
+I heard about the course through my doctoral school's e-mail list, took a closer look at the contents of the course and found the course to be beneficial to my studies and current and future work.
+
+I just finished watching the webinars and reading the recommended chapters for this week from R for Health Data Science and the MABS4IODS. I am excited to learn about GitHub and more about good practices in R and R Markdown, even though I have used R for a year already. My learning of R thus far has been task orientated and I realize that it is good to recap the basics. I especially want and expect to learn about GitHub, which I have not used before. 
+
+## New things I learned
+
+- I learned new things from the Excercise set 1. New packages or functions for me were:
+  - lubridate (package) to handle dates
+  - **bind_rows()** to add new rows to tibble from new tibble
+  - **fct_relevel()** to change factor level order e.g. in
+  - &rarr; mutate(income = **fct_relevel**(income, "Low", "Lower-Middle", "Upper-Middle", "High"))
+  - **starts_with()** to use e.g. with select to get all columns that start with a certain string as in e.g.
+  - &rarr; **select**(starts_with("deaths"))
+  - **matches()** to use e.g. with pivot_longer to operate on columns that match a certain string, and can also take operators like AND (&) or OR (|) as in e.g.
+  - &rarr; gbd_wide %>% pivot_longer(**matches**("Female**|**Male"), names_to = "sex_year", values_to = "deaths_millions")
+
+- Something I knew, but rarely use automatically (without googleing) and hope to use more and more confidently for now on were operators or functions:
+  - **%in%** (operator?) for e.g. in the following code
+  - &rarr; filter(cause **%in%** c("Communicable diseases", "Non-communicable diseases")
+  - **mutate()** to modify tibble for e.g. by adding columns, as in the following codes
+  - &rarr; **mutate**(above_threshold = if_else(measurement > 3, "Above three", "Below three"))
+  - &rarr; typesdata %>% **mutate**(plot_label = paste(id, "was last measured at", date, ", and the value was", measurement))
+  - &rarr; pastedata %>% **mutate**(date = paste(day, month, year, sep = "-"))
+- Although I use **group_by()** command often, it is good to recap
+  - &rarr; gbd2017 %>% **group_by**(cause, sex) %>% summarise(deaths_per_group = sum(deaths_millions))
+
+
+- I also realized, I use data frame more often than I use **tibble** and it might be good to change this
+
+## Thoughts about plotting with ggplot2
+
+- I didn't realize that it's possible to do *filtering inside ggplot*, as in:
+  - &rarr; + facet_wrap(~pop **> 50000000**)
+- Or *do transformations*, e.g. divide values by 1000 as in:
+  - &rarr; ggplot(aes(x = gdpPercap**/1000**, y = lifeExp, colour = continent))
+- I have not used the **size** argument in ggplot aes() before to form a *bubble plot* as in:
+    - rarr; ggplot(aes(x = gdpPercap/1000, y = lifeExp, **size** = pop))
+- Two things to remember from the following code:
+  - 1) that I can use *fct_reorder()* to reorder according to e.g. value *within ggplot*, and 
+  - 2) when to use color and fill *arguments within geom() rather than aes()*
+  - &rarr; gapdata2007 %>% filter(continent == "Europe") %>% ggplot(aes(x = **fct_reorder**(country, lifeExp), y = lifeExp)) + geom_col(**color = "deepskyblue", fill = NA**) + coord_flip()
+- I should start using more often the **Multiple geoms** property of ggplot for *overlapping ploting* as in e.g.
+  - &rarr; geom_boxplot() + geom_jitter()
+- And that I can have both *shared* aes() for the plottings as well as *separate* aes(), as in:
+  - &rarr; gapdata2007 %>% ggplot(aes(**x** = continent, **y** = lifeExp)) + geom_boxplot() + geom_jitter(aes(**colour** = continent))
+
 
