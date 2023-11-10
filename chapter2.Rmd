@@ -1,13 +1,165 @@
-# Insert chapter 2 title here
-
-*Describe the work you have done this week and summarize your learning.*
-
-- Describe your work and results clearly. 
-- Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods.
-- Assume the reader has no previous knowledge of your data or the more advanced methods you are using.
+# Chapter 2: Linear regression
 
 ```{r}
 date()
 ```
 
-Here we go again...
+*This week we worked with linear regression. we learned how to do linear regression model with lm(), how to interpret the test statistics of linear model, and how to do graphical diagnostics for the data to be able to decide if the assumptions for linear regeression are met*
+
+## The students2014 dataset
+
+Data is **modified** results from an international survey of Approaches to Learning, that was collected between 3.12.2014 - 10.1.2015 by Kimmo Vehkalahti. **Original data** can be found from: http://www.helsinki.fi/~kvehkala/JYTmooc/JYTOPKYS3-data.txt
+
+More information of the data can be found from here: https://www.mv.helsinki.fi/home/kvehkala/JYTmooc/JYTOPKYS3-meta.txt
+
+The following **modifications** to the data was done by Laura Häkkinen on 07.11.2023: Zero values for variable "points" are NA and were removed from the data to include 166 observations, while the original data had 183 observations. Only variables "age", "points", and "gender" were taken from the original data without modificatios, while "attitude" is "Attitude" from the original data divided by 10 to scale as a mean value of ten questions, and "deep", "surf", and "stra" were calculated as **mean values** for multiple questions in these categories
+
+The modified data here contains results for a set of questions which are classified to 3 categories:
+- deep questions (**deep**)
+- surface questions (**surf**)
+- strategic questions (**stra**)
+
+as well as:
+- global attitude toward statistics (**attitude**)
+- exam points (**points**)
+- age of the person (in years) (**age**) derived from the date of birth
+- gender of the person (**gender**) given as M (Male), F (Female)
+
+
+```{r}
+dataset <- read.csv2("\\\\ad.helsinki.fi\\home\\l\\lehakkin\\Desktop\\KURSSIT\\Open_Data_Science\\IODS-project\\data\\learning2014.csv")
+str(dataset)
+
+# put gender as the first varialble
+dataset <- dataset[, c(4,1,2,3,5,6,7)]
+```
+
+## Graphical overview of the dataset
+
+```{r}
+# access the GGally and ggplot2 libraries
+library(GGally)
+library(ggplot2)
+
+# create plot matrix with ggpairs()
+p <- ggpairs(dataset, mapping = aes(col = gender), lower = list(combo = wrap("facethist", bins = 20)))
+
+# draw the plot
+p
+
+```
+
+### Distributions of the data 
+
+Distributions look otherwise ok (close to normal)
+except for:
+- age, which is right skewed
+- points, which seem to have 2-3 peaks
+- deep for M seems to be a bit left skewed
+- surf for M a bit right skewed
+
+### Correlations
+Significantly correlating variables are
+- attitude and points: strong positive correlation for All (0.437), F, and M
+- surf and attitude: negative correlation for All (-0.176), but only significant for M
+- surf and deep: negative correlation for All (-0.324), but only significant for M, for which the correlation is strong (-0.622)
+- surf and stra: negative correlation found when both genders included, but individually within F and M no significant correlation
+
+### Other comments
+- there are more females than to males
+- age median value is ~20, but a bit higher for M
+- attitude median values are higher for M
+- there seems to be up to 3 peaks for points with values approx. at 10, 20 and 30
+- surf and stra median values differ between M and F
+
+
+## Regression model
+
+We will make a regression model for the data so that "points" is the dependent variable. Since attitude had the highest correlations with exam points,  let's include it as an explanatory variables.
+
+Stra *marginally* correlates with points, so let's add that as well
+
+Surf *marginally* correlates with points, but it also correlates with stra (), which might be a problem
+
+```{r}
+m <- lm(points ~ attitude + stra + surf, data = dataset)
+summary(m)
+
+```
+
+### Model 1 interpretation
+
+The F-statistic for the whole model gives a significant p value (3.156e-08), meaning that there is strong evidence that not all three coefficients are zero, but the stra and surf explanatory variables do not have a statistically significant relationship with the target variable (points), so I will remove them and only leave attitude, which is highly significant with p values smaller than 0.001 (1.93e-08). The multiple R2 value, i.e. square of the multiple correlation coefficient, for the model is 0.2074 meaning that the model explains ~21% of the variation in the data.
+
+### Running a new model
+
+```{r}
+m2 <- lm(points ~ attitude, data = dataset)
+summary(m2)
+```
+
+### Model 2 interpretation
+
+Now only one explanatory variable, attitude, which is significant. The relationship between attitude and points is positive, meaning that a higher value in attitude gives a higher value in points. The estimate value 3.5255 means that the mean of points variable changes this much given a one-unit shift in the attitude value (while holding other variables in the model constant). Effect could be written as: points = 11.6372 + 3.5255**attitude
+
+Model multiple R2 value is 0.1906 meaning that the model explains ~19% (or the variation in additude explains ~19%) of the variation in the points
+
+The F-statistic for the whole model gives a significant p value (4.119e-09)
+
+## Regression diagnostics
+
+We will investigate the residuals for regression diagnostics. Residuals are the difference between an observed value of the response variable and the fitted value. Residuals essentially estimate the error terms in the model. Below we make 3 plots with the residuals: *Residuals vs Fitted values, Normal QQ-plot and Residuals vs Leverage*
+
+```{r}
+# make the model
+m2 <- lm(points ~ attitude, data = dataset)
+
+# draw simple scatter plot and diagnostic plots using the plot() function. Choose the plots 1, 2 and 5, which correspond to Residuals vs Fitted values, Normal QQ-plot and Residuals vs Leverage
+# combine into one figure with par()
+ggplot(dataset, aes(x = attitude, y = points)) + 
+  geom_point() +
+  stat_smooth(method = "lm")
+par(mfrow = c(2,2))
+plot(m2, which = c(1,2,5))
+```
+
+### Assumptions with linear regression are: 
+- **Linear relationship** between predictors and outcome
+- **Equal variance of residuals** or  **Homoscedasticity** or **constant variance** where the variance of residual is the same for any value of x
+- **Normal distribution of residuals**
+- **Independence of residuals** where observations are independent of each other
+
+
+### Are assumptions met in our model?
+
+#### Checking for linearity
+
+According to the **simple scatter plot** the **relationship between x and y seem linear** (no other clear shape to the dots than a line)
+
+#### Checking equal variance of residuals (and outliers)
+
+In **residuals vs fitted values plot** the residuals are plotted against the fitted values of the response variable, and it can be used to detect unequal error variances. The distance of the observations from the fitted line should be the same on the left side as on the right side. Here, residuals are located randomly around the zero line (no "shape" to the residuals, but rather a "band of dots") indicating that the **constant variance assumption is met**, although looks like there is a bit less deviation from the zero line at the right side of the plot, but since variability in the residuals does not constantly change with the size of the fitted values, and the less variation with the higher fitted values can be due to fewer observations there, probably no need for a transformation of the response variable. From the plot we can also see there might be few *outliers*, that fall on the bottom of the plot. These are marked, 35, 56, and 145, indicating that these rows in our data might be outliers.
+
+Also the **residuals vs leverage plot** can help detect outliers. We have some observations outside the Cook's distance in the residuals vs leverage plot (56, 35, and 71)
+
+
+#### Checking for normality
+
+**QQ-plot** can be used to detect normality. Based on the QQ-plot, there seems to be a systematic deviation from the normal distribution since a slight deviation from the line at both ends of the quantiles. This indicates that the data might be *skewed* a bit, this could be due to the outliers as well. **Removing of the outliers should be considered**. But, still most of the dots fall into the line, indicating that the normality assumption is probably met.
+
+#### running a test for normality
+
+I still want to run a test to check for normality, because interpreting the figures was a bit difficult. I use the function in below chunk that makes 4 tests for normality of the residuals. If p value is small it indicates non-normal distribution. I will use Kolmogorov-Smirnov p-value, because we have more than 50 observations (if less then I should use Shapiro test).
+
+```{r}
+library("olsrr")
+ols_test_normality(m2)
+```
+High p-value in Kolmogorov-Smirnov test (0.5479) indicates that the **residuals are normally distributed**.
+
+
+#### Checking for independence
+
+We do not use any plot to test for the independence, but rather deduce this from the experimental setup. Since this was not a longitudinal data and there is no other aspect of the setup to question the independence of the measurements, I will determine that the **independence of residuals assumption is met**.
+
+
