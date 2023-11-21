@@ -1,0 +1,208 @@
+---
+title: "chapter3"
+author: "Laura_Hakkinen"
+date: "2023-11-20"
+output: html_document
+---
+
+# Chapter 3: logistic regression
+
+## The data
+
+The data contains student achievement in secondary education of two Portuguese schools. The data attributes include student grades, demographic, social and school related features, as well as the alcohol use data, and it was collected by using school reports and questionnaires. Two datasets are provided regarding the performance in two distinct subjects: Mathematics (mat) and Portuguese language (por).
+
+More information of the original data from:
+<https://www.archive.ics.uci.edu/dataset/320/student+performance>
+
+### the modified data
+
+The joined data set used in the analysis combines the two student alcohol consumption data sets. The following adjustments have been made:
+
+- The variables not used for joining the two data have been combined by averaging (including the grade variables)
+- 'alc_use' is the average of 'Dalc' and 'Walc'
+- 'high_use' is TRUE if 'alc_use' is higher than 2 and FALSE otherwise
+
+- more info of how the data was created from the original data in: <https://github.com/lehakkin/IODS-project/blob/master/data/create_learning2014.R>
+
+### get the data
+
+```{r}
+setwd("\\\\ad.helsinki.fi\\home\\l\\lehakkin\\Desktop\\KURSSIT\\Open_Data_Science\\IODS-project\\data")
+
+alc <- read.csv2(file = "alc.csv")
+
+names(alc)
+
+```
+
+```{r}
+# get the packages
+# access the tidyverse libraries tidyr, dplyr, ggplot2
+library(tidyr); library(dplyr); library(ggplot2)
+```
+
+
+## Hypothesis of alcohol consumption
+I will model high/low alcohol usage with these 4 explanatoryvariables: 
+
+- activities - extra-curricular activities (binary: yes or no)
+- goout - going out with friends (numeric: from 1 - very low to 5 - very high)
+- sex - student's sex (binary: 'F' - female or 'M' - male)
+- age - student's age (numeric: from 15 to 22)
+
+The hypothesis behind using these explanatory variables are:
+
+- **age** affects alcohol usage because of the legal status to drink alcohol changes between the 15 and 22
+- **going out** affects alcohol usage in cases where alcohol consumption is a social event
+- **sex** affects alcohol usage, so that males typically consume more alcohol
+- **activities** affect alcohol usage by limiting time for alcohol usage
+
+
+## Data distribution and relationship
+
+
+#### View of the data
+
+##### Distributions
+
+```{r}
+model_var <- c("high_use", "sex", "age", "activities", "goout")
+
+# use gather() to gather columns into key-value pairs and then glimpse() at the resulting data
+alc %>% select(all_of(model_var)) %>% gather() %>% ggplot(aes(value)) + geom_bar() + facet_wrap("key", scales = "free")
+```
+
+- **Distributions** look ok (goout is normally distributed, activities and sex have similar counts for each group), otherwise than for *age* which is *right-skewed*
+
+#### Numerical distributions
+
+```{r}
+# produce summary statistics by group
+alc %>% group_by(sex) %>% summarise(count = n())
+alc %>% group_by(age) %>% summarise(count = n())
+alc %>% group_by(activities) %>% summarise(count = n())
+alc %>% group_by(goout) %>% summarise(count = n())
+
+
+```
+
+##### explanatory vs dependet
+
+
+```{r}
+
+library("ggpubr")
+
+table(alc$high_use, alc$activities, alc$sex)
+
+# Box plots
+g1 <- ggplot(alc, aes(x = age , y = high_use, col = sex)) + geom_boxplot()
+g2 <- ggplot(alc, aes(x = goout, y = high_use, col = sex)) + geom_boxplot()
+
+
+comb <- ggarrange(g1, g2,
+                    ncol = 2, nrow = 2, common.legend = TRUE, legend="right")
+comb
+
+
+```
+
+Looks like
+- activities correlates weakly with high_use status overall, and the effect is somewhat different for male and female
+- age and high_use status is opposite to male and female: the median age for female without high_use status is 17 and with high_use status 16, while for male it is the opposite
+- goout seems to correlate highly with alc status in males
+
+The original hypothesis was somewhat ok I want to include interaction of sex with age (I also tried with interaction with activities, but it wasn't significant)
+
+
+## logistic regression
+
+```{r}
+# find the model with glm()
+m <- glm(high_use ~ goout + age*sex + activities, data = alc, family = "binomial")
+
+# print out a summary of the model
+summary(m)
+
+```
+
+### Model interpretation
+
+- The terms goout, activities and the interaction  of age and sex are significant or margibally significant (activities)
+- It doesn't matter if age is not significant, because the interaction is sig
+
+
+```{r}
+library(finalfit)
+dependent <- "high_use"
+explanatory <-c("sex*age", "activities", "goout")
+explanatory_multi <- c("sex",  "age", "activities", "goout")
+
+alc %>% 
+  finalfit(dependent, explanatory, explanatory_multi,
+           keep_models = TRUE, metrics = TRUE)
+```
+Model comparison shows that it's better to keep tthe interaction term (AIC is smaller with interaction)
+
+
+###  coefficients of the model as odds ratios
+
+```{r}
+# compute odds ratios (OR)
+OR <- coef(m) %>% exp
+
+# compute confidence intervals (CI)
+CI <- confint(m)
+
+# print out the odds ratios with their confidence intervals
+cbind(OR, CI)
+```
+
+## Model prediction
+
+```{r}
+# predict() the probability of high_use
+probabilities <- predict(m, type = "response")
+
+# add the predicted probabilities to 'alc'
+alc <- mutate(alc, probability = probabilities)
+
+# use the probabilities to make a prediction of high_use
+alc <- mutate(alc, prediction = alc$probability>0.5)
+
+# see the last ten original classes, predicted probabilities, and class predictions
+select(alc, failures, absences, sex, high_use, probability, prediction) %>% tail(10)
+
+# tabulate the target variable versus the predictions
+table(high_use = alc$high_use, prediction = alc$prediction)
+
+
+```
+### loss function
+
+```{r}
+# define a loss function (mean prediction error)
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+
+# call loss_func to compute the average number of wrong predictions in the (training) data
+loss_func(class = alc$high_use, prob = alc$probability)
+```
+
+### Cross validation
+
+```{r}
+# compute the average number of wrong predictions in the (training) data
+
+
+# K-fold cross-validation
+library(boot)
+cv <- cv.glm(data = alc, cost = loss_func, glmfit = m, K = nrow(alc))
+
+# average number of wrong predictions in the cross validation
+cv$delta[1]
+
+```
+
