@@ -1,0 +1,369 @@
+---
+title: "chapter4"
+author: "Laura_Hakkinen"
+date: "2023-11-27"
+output: html_document
+---
+
+# Chapter 4
+
+## load packages
+
+```{r}
+library(tidyr)
+library("MASS")
+library("corrplot")
+library(GGally)
+library(ggplot2)
+library(corrplot)
+```
+
+
+## load data
+
+### link to data: https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/Boston.html
+
+### Source for the data
+
+- Harrison, D. and Rubinfeld, D.L. (1978) Hedonic prices and the demand for clean air. J. Environ. Economics and Management 5, 81–102.
+- Belsley D.A., Kuh, E. and Welsch, R.E. (1980) Regression Diagnostics. Identifying Influential Data and Sources of Collinearity. New York: Wiley.
+
+
+
+```{r}
+Boston <- Boston
+```
+
+### Explanation of the variables
+
+- crim: per capita crime rate by town.
+- zn: proportion of residential land zoned for lots over 25,000 sq.ft.
+- indus: proportion of non-retail business acres per town.
+- chas: Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+- nox: nitrogen oxides concentration (parts per 10 million).
+- rm: average number of rooms per dwelling.
+- age: proportion of owner-occupied units built prior to 1940.
+- dis:weighted mean of distances to five Boston employment centres.
+- rad: index of accessibility to radial highways.
+- tax: full-value property-tax rate per $10,000.
+- ptratio: pupil-teacher ratio by town.
+- black: 1000(Bk - 0.63)^2, where Bk is the proportion of blacks by town.
+- lstat: lower status of the population (percent).
+- medv: median value of owner-occupied homes in $1000s.
+
+## structure and dimensions of the data
+
+```{r}
+str(Boston)
+dim(Boston)
+names(Boston)
+
+# check for NAs: number of NAs per column
+colSums(is.na(Boston))
+
+# summary of the data set
+summary(Boston)
+
+```
+
+Description
+
+- **NO NAs** in the data
+- All variables are numerical (num or integer). The ineteger vriables are chas and rad
+- 14 variabes
+- chas is dummy variable with two levels (0, 1)
+
+
+## graphical overview of the data
+
+```{r}
+# plot matrix of the variables
+
+# this should make the plot bigger in the output(?)
+knitr::opts_chunk$set(fig.width=unit(18,"cm"), fig.height=unit(11,"cm"))
+
+p <- ggpairs(Boston)
+print(p, progress = F)
+
+
+```
+
+
+Commenting on the distributions of the variables and the relationships between them
+
+- most variables are not normally distributed, but rather are skewed or have two peaks. Propably some standardization needed
+- there are some strong correlation (non-linear) between the variables (e.g. dis and nox: -0.77; medv and istat: -0.74)
+
+Since there are so many variable, lets look at the relationship with another method: Correlations plot
+
+
+## Correlations plot
+
+```{r}
+
+# calculate the pearson correlation matrix and round it
+cor_matrix <- cor(Boston, method = "pearson") 
+
+# visualize the correlation matrix, but use only two digits
+cor_matrix %>% round(digits = 2) %>% corrplot(method="circle", type = "upper", cl.pos = "b", tl.pos = "d", tl.cex = 0.6)
+```
+
+Note! The areas of circles show the absolute value of corresponding correlation coefficients, while the color intensity shows the correlation coefficient (not absolute) so that negative correlations are blue and positive red
+
+Strong **positive correlations** with
+
+- medv and istat
+- age and dis
+- dis and nox
+- dis and indus
+
+Strong **negative correlaions** with
+
+- tax and rad
+- age and nox
+- nox and indus
+- tax and indus
+- tax and nox
+- medv and rm
+- dis and zn
+
+
+## Standardization of the data
+
+
+We are going to standardize the data by scaling the whole data set (can be done, because all numerical variables)
+
+In the scaling we subtract the column means from the corresponding columns and divide the difference with standard deviation.
+
+$$scaled(x) = \frac{x - mean(x)}{ sd(x)}$$
+
+
+```{r}
+# center and standardize variables
+boston_scaled <- scale(Boston)
+
+# summaries of the scaled variables
+summary(boston_scaled)
+
+# change the object to data frame
+boston_scaled <- as.data.frame(boston_scaled)
+class(boston_scaled)
+
+```
+
+After scaling
+
+- all means at zero
+- smaller range (Min - Max)
+- for example, before scaling crime had values from 0.006 to 88.976
+
+
+### Create a categorical variable from the crime rate
+
+Let's use the scaled crime rate to create the categorical variable by using the quantiles as the break points. Drop the old crime rate variable from the dataset.
+
+```{r}
+# create a quantile vector of crim and print it
+bins <- quantile(boston_scaled$crim)
+bins
+
+# create a categorical variable 'crime' by using the bins, and let's rename the categories
+crime <- cut(boston_scaled$crim, breaks = bins, include.lowest = TRUE, labels = c("low", "med_low", "med_high", "high"))
+
+# look at the table of the new factor crime
+table(crime)
+
+# remove original crim from the dataset
+boston_scaled <- dplyr::select(boston_scaled, -crim)
+
+# add the new categorical value to scaled data
+boston_scaled <- data.frame(boston_scaled, crime)
+
+```
+
+
+### Divide dataset to training and test set for model validation
+
+Let's divide the dataset to train and test sets, so that 80% of the data belongs to the train set. 
+
+```{r}
+# number of rows in the Boston dataset 
+n <- nrow(boston_scaled)
+
+# choose randomly 80% of the rows
+ind <- sample(n,  size = n * 0.8)
+
+# create train set
+train <- boston_scaled[ind,]
+
+# create test set 
+test <- boston_scaled[-ind,]
+
+```
+
+
+## Linear Discriminant Analysis (LDA)
+
+Let's fit the linear discriminant analysis on the train set, by using the categorical crime rate as the target variable and all the other variables in the dataset as predictor variables, and draw the LDA (bi)plot.
+
+```{r}
+# linear discriminant analysis
+lda.fit <- lda(crime ~ ., data = train)
+
+# print the lda.fit object
+lda.fit
+
+# the function for lda biplot arrows
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  graphics::arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric (needed in the next step)
+classes <- as.numeric(train$crime)
+
+# plot the lda results (select both lines and execute them at the same time!)
+plot(lda.fit, dimen = 2, col = classes, pch = classes)
+lda.arrows(lda.fit, myscale = 2.5)
+
+# let's plot again with higher myscale number to better see the smaller arrows
+plot(lda.fit, dimen = 2, col = classes, pch = classes)
+lda.arrows(lda.fit, myscale = 6)
+
+# and again
+plot(lda.fit, dimen = 2, col = classes, pch = classes)
+lda.arrows(lda.fit, myscale = 10)
+```
+High crime clearly separates into its own cluster with only some medium high crime overlapping
+
+High crime seems to coincide clearly with **rad** (index of accessibility to radial highways) and somewhat with **ptratio** (pupil-teacher ratio by town)
+
+Only some of the medium high crime separates into it's own cluster, while others overlap with medium low (and some with high). This separate medium high cluster coincides with nox, medv, stat, dis and indus
+
+
+## Predict LDA
+
+Let's save the crime categories from the test set, remove the categorical crime variable from the test dataset, and predict the classes with the LDA model on the test data. Then, let's cross tabulate the results with the crime categories from the test set.  
+
+
+```{r}
+
+# save the correct classes from test data
+correct_classes <- test$crime
+
+# remove the crime variable from test data
+test <- dplyr::select(test, -crime)
+
+# predict classes with test data
+lda.pred <- predict(lda.fit, newdata = test)
+
+# cross tabulate the results
+table(correct = correct_classes, predicted = lda.pred$class)
+```
+
+Comments on the lda prediction results:
+
+- high crime was best predicted, so that all 24 incidences were predicted correctly (100 % correct)
+- medium high crime was predicted the second best with 3 out of 22 incidences predicted incorrectly (86 % correct) 
+- low crime was predicted the third best with 8 out of 19 incidences predicted incorrectly (58 % correct)
+- medium low crime was predicted the worst with 19 out of 36 incidences were predicted correctly (47 % correct)
+
+
+## Distance measures
+
+Let's reload the Boston dataset and standardize it by scaling to get comparable distances. Then, let's calculate the euclidian and manhattan distances between the observations.
+
+
+```{r}
+data("Boston")
+
+boston_scaled <- scale(Boston)
+
+# euclidean distance matrix
+dist_eu <- dist(boston_scaled)
+
+# look at the summary of the distances
+summary(dist_eu)
+
+# manhattan distance matrix
+dist_man <- dist(boston_scaled, method = "manhattan")
+
+# look at the summary of the distances
+summary(dist_man)
+
+
+```
+
+## K-means
+
+
+
+Let's run k-means algorithm on the scaled dataset with 3 clusters, and visualize the clusters.
+
+```{r}
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 3)
+
+# plot the with clusters
+pairs(boston_scaled, col = km$cluster)
+
+```
+
+Looks like, with three clusters, the variables best separating the cluster are:
+
+- medv
+- dis
+- indus
+- nox
+- rad and tax (separate one of the clusters)
+
+
+### K-means: determine the k
+
+Before we run the final k-means algorithm, let's investigate what is the optimal number of clusters by calculating the total within sum of squares (**twcss**), and check at what cluster number there is the most drastic drop in twcss (shoulder effect in the plot). 
+
+```{r}
+
+set.seed(123)
+
+# determine the number of clusters
+k_max <- 10
+
+# calculate the total within sum of squares
+twcss <- sapply(1:k_max, function(k){kmeans(boston_scaled, k)$tot.withinss})
+
+# visualize the results
+qplot(x = 1:k_max, y = twcss, geom = 'line')
+
+
+```
+
+The figure indicates that at k=2 there is the biggest drop in twcss (a shoulder effect)
+
+
+### K-means clustering
+
+Let's run the k-means algorithm again with the selected value for k=2. 
+
+```{r}
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 2)
+
+# plot the Boston dataset with clusters
+pairs(boston_scaled, col = km$cluster)
+```
+
+With two clusters, the variables best separating the cluster are:
+
+- indus
+- nox
+- rad
+- tax
+- zn
+
+Indus is probably best individual variable that separates the clusters clearly into the same clusters as the k-clusters, followed by nox. Together nox and rm also separate cluters very well.
+
