@@ -1,0 +1,238 @@
+---
+title: "chapter5"
+author: "Laura_Hakkinen"
+date: "2023-12-04"
+output: html_document
+---
+
+# Capter 5: 5: Dimensionality reduction techniques
+
+## Data
+
+The 'human' dataset originates from the United Nations Development Programme. See their data page for more information.
+<https://hdr.undp.org/data-center/human-development-index#/indicies/HDI>
+
+For a nice overview see also the calculating the human development indices pdf:
+<https://hdr.undp.org/system/files/documents/technical-notes-calculating-human-development-indices.pdf>
+
+Most of the variable names in the data have been shortened and two new variables have been computed. See the meta file for the modified data here for descriptions of the variables:
+<https://github.com/KimmoVehkalahti/Helsinki-Open-Data-Science/blob/master/datasets/human_meta.txt>
+
+
+The data combines several indicators from most countries in the world
+
+"Country" = Country name
+
+**Health and knowledge**
+
+"GNI" = Gross National Income per capita
+"Life.Exp" = Life expectancy at birth
+"Edu.Exp" = Expected years of schooling 
+"Mat.Mor" = Maternal mortality ratio
+"Ado.Birth" = Adolescent birth rate
+
+**Empowerment**
+
+"Parli.F" = Percetange of female representatives in parliament
+"Edu2.F" = Proportion of females with at least secondary education
+"Edu2.M" = Proportion of males with at least secondary education
+"Labo.F" = Proportion of females in the labour force
+"Labo.M" " Proportion of males in the labour force
+
+"Edu2.FM" = Edu2.F / Edu2.M
+"Labo.FM" = Labo2.F / Labo2.M
+
+
+
+### Load data and packages
+
+```{r}
+library(readr)
+library("FactoMineR")
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(GGally)
+library(corrplot)
+library(ggplot2)
+```
+
+
+```{r}
+setwd("\\\\ad.helsinki.fi\\home\\l\\lehakkin\\Desktop\\KURSSIT\\Open_Data_Science\\IODS-project\\data")
+human <- read_csv2(file = "human.csv")
+```
+
+
+
+### Move the country names to rownames
+
+```{r}
+human <- column_to_rownames(human, "Country")
+```
+
+
+
+## graphical overview of the data
+
+```{r, fig.width=10, fig.height=8, fig.fullwidth=TRUE}
+# visualize the 'human_' variables
+ggpairs(human, progress = FALSE)
+```
+
+```{r}
+# compute the correlation matrix and visualize it with corrplot
+corrplot(cor(human))
+```
+
+
+Some of the variable are **skewed**
+
+Strong **positive correlation** with e.g. Life.Exp and Edu.Exp, Ado.Birth and Mat.mor
+Strong **negative correlation** with e.g. Mat.Mor and Life.Exp, Life.Exp and Ado.Birth
+
+
+## summaries of the variables in the data
+
+```{r}
+summary(human)
+```
+
+There is a big difference in the variances among the variables. 
+
+**Data needs scaling**
+
+But let's first do PCA with non-standardized human data
+
+
+## Principal component analysis (PCA) 
+
+```{r, fig.width=6, fig.height=6, fig.fullwidth=TRUE}
+# perform principal component analysis (with the SVD method) for non-standardized human
+pca_human <- prcomp(human)
+
+#variability captured by the principal components
+s <- summary(pca_human)
+s
+
+# rounded percentanges of variance captured by each PC
+pca_pr <- round(1*s$importance[2, ]*100, digits = 2)
+
+# print out the percentages of variance
+pca_pr
+
+# create object pc_lab to be used as axis labels
+pc_lab <- paste0(names(pca_pr), " (", pca_pr, "%)")
+
+# biplot displaying the observations by the first two principal components
+biplot(pca_human, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"), xlab = pc_lab[1], ylab = pc_lab[2])
+
+
+```
+
+Looks really bad, because most of the variance is explained by the first component
+
+## Standardize variables and repeat PCA
+
+```{r, fig.width=8, fig.height=8, fig.fullwidth=TRUE}
+# standardize the variables
+human_std <- scale(human)
+
+# print out summaries of the standardized variables
+summary(human_std)
+
+# perform principal component analysis (with the SVD method)
+pca_human <- prcomp(human_std)
+
+#variability captured by the principal components
+s <- summary(pca_human)
+s
+
+# rounded percentanges of variance captured by each PC
+pca_pr <- round(1*s$importance[2, ]*100, digits = 1)
+
+# print out the percentages of variance
+pca_pr
+
+# create object pc_lab to be used as axis labels
+pc_lab <- paste0(names(pca_pr), " (", pca_pr, "%)")
+
+# biplot displaying the observations by the first two principal components
+biplot(pca_human, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"), xlab = pc_lab[1], ylab = pc_lab[2])
+
+```
+
+**without standardizing** the PCA looks bad, because most of the variance is explained by the first component (almost 99.99%), which itself is mainly composed of the variation with the variable GNI, which has by far the largest range and variation in among the variables
+
+**with standardization** PCA looks better and better represents the variation in all of the variables. Now the two first principal components together explain ~70% of the variation.
+
+Countries are separated along the first component by *mainly* **Health and Knowledge**:
+- Mat.Mor
+- Ado.Birth
+- Edu.Exp
+- Edu2.FM
+- GNI
+- Life.Exp
+
+...so that Mat.Mor and Ado.Birth are "draw" countries to the same direction, and the rest to the other direction. This makes sense, becauese we saw it earlier that Mat.Mor and Ado.Birth are positively correlated
+
+Countries are separated along the second component by **Empowerment** excluding the Edu2.FM:
+-Parli.F
+-Labo.FM
+
+
+## Load the Tea dataset
+
+```{r}
+tea <- read.csv("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/tea.csv", stringsAsFactors = TRUE)
+```
+
+
+
+### convert character variables to factors:
+
+Everything seems to already be a factor or a inetger, so no conversion
+
+```{r}
+str(tea)
+
+dim(tea)
+
+view(tea)
+
+```
+
+
+
+### Subset and Visualize tea data
+
+```{r}
+# column names to keep in the dataset
+keep_columns <- c("Tea", "How", "how", "sugar", "where", "lunch")
+
+# select the 'keep_columns' to create a new dataset
+tea_time <- dplyr::select(tea, keep_columns)
+
+# look at the summaries and structure of the data
+summary(tea_time)
+str(tea_time)
+```
+
+
+## Multiple Correspondence Analysis (MCA) on the tea data 
+
+```{r}
+# multiple correspondence analysis
+mca <- MCA(tea_time, graph = FALSE)
+
+# summary of the model
+summary(mca)
+
+# visualize MCA
+plot(mca, invisible=c("ind"), graph.type = "classic", habillage = "quali")
+```
+
+
+The two axis explain together ~30% of the variation in the data.
+
+People who drink at the tea shop more often drink anpackaged tea, and also green tea, while sugar and milk user more often use tea bags and drink Eral Grey
