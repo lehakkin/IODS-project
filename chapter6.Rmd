@@ -1,0 +1,322 @@
+---
+title: "chapter6.Rmd"
+author: "Laura_Hakkinen"
+date: "2023-12-11"
+output: html_document
+---
+
+# Chapter 6: Analysis of longitudinal data
+
+## PART I
+
+### 6.1 load data and packages
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggplot2)
+library(lme4)
+
+setwd("\\\\ad.helsinki.fi\\home\\l\\lehakkin\\Desktop\\KURSSIT\\Open_Data_Science\\IODS-project\\data")
+
+RATSL <- read.csv2("RATSL.csv")
+BPRSL <- read.csv2("BPRSL.csv")
+
+str(RATSL)
+str(BPRSL)
+```
+```{r}
+
+## Convert the categorical variables of both data sets to factors
+
+# Factor Group & ID
+BPRSL$treatment <- factor(BPRSL$treatment)
+BPRSL$subject <- factor(BPRSL$subject)
+
+# Factor variables ID and Group
+RATSL$ID <- as.factor(RATSL$ID)
+RATSL$Group <- as.factor(RATSL$Group)
+
+str(RATSL)
+str(BPRSL)
+```
+
+
+
+
+### 6.2 view of the RATS data
+```{r}
+names(RATSL)
+
+str(RATSL)
+
+summary(RATSL)
+
+
+```
+
+
+### 6.3 Graphical displays of longitudinal data:
+
+
+```{r}
+
+# Draw the plot
+ggplot(RATSL, aes(x = Time, y = Weight, linetype = Group, fill=ID)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times=4)) + 
+  scale_y_continuous(limits = c(min(RATSL$Weight), max(RATSL$Weight)))
+
+```
+
+Weight grows in time
+
+Group 1 is quite separate from group 2. and 3.
+
+Lower/higher weight at the beginning indicates lower/higher weight at the end
+
+
+### 6.4 Standardise
+
+```{r}
+
+# Standardise the variable Weight
+RATSL <- RATSL %>%
+  group_by(Time) %>%
+  mutate(stdWeight = (Weight - mean(Weight)) / sd(Weight)) %>%
+  ungroup()
+
+# Glimpse the data
+glimpse(RATSL)
+
+# Plot again with the standardised Weight
+ggplot(RATSL, aes(x = Time, y = stdWeight, linetype = Group, fill=ID)) +
+  geom_line() +
+  scale_linetype_manual(values = rep(1:10, times=4)) +
+  scale_y_continuous(name = "standardized Weight")
+
+```
+
+
+### 6.5 Summary graphs
+
+
+```{r}
+# how many per observations per ID
+table(RATSL$ID)
+
+# Number of IDs (per group):
+n <- 11
+
+# Summary data with mean and standard error of Weight by Group and Time 
+RATSL_S <- RATSL %>%
+  group_by(Group, Time) %>%
+  summarise( mean = mean(Weight), se = sd(Weight)/sqrt(n)) %>%
+  ungroup()
+
+# Glimpse the data
+glimpse(RATSL_S)
+
+# Plot the mean profiles
+ggplot(RATSL_S, aes(x = Time, y = mean, linetype = Group, shape = Group)) +
+  geom_line() +
+  geom_point(size=3) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se, linetype="1"), width=0.3) +
+  scale_y_continuous(name = "mean(weight) +/- se(weight)")
+
+
+```
+Very small standard error (se) in group 1, small se in group 3, and large se in group 2
+
+Mean values show less change in group 1 over time compared to group 2 and 3
+
+
+### 6.6 Find outliers
+
+
+```{r}
+# time points
+unique(RATSL$Time)
+
+# Create a summary data by Group and ID with mean as the summary variable (ignoring baseline Time 1)
+RATSL10S <- RATSL %>%
+  filter(Time > 1) %>%
+  group_by(Group, ID) %>%
+  summarise( mean=mean(Weight) ) %>%
+  ungroup()
+
+# Glimpse the data
+glimpse(RATSL10S)
+
+# Draw a boxplot of the mean versus Group
+ggplot(RATSL10S, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "mean(weight), time 8-64")
+
+# Create a new data by filtering outliers and adjust the ggplot code to draw the plot again with the new data
+RATSL10S1 <- filter(RATSL10S, mean>250)
+RATSL10S1 <- filter(RATSL10S1, mean<550)
+RATSL10S1 <- filter(RATSL10S1, mean!=495.2)
+
+# Draw a boxplot of the mean versus Group
+ggplot(RATSL10S1, aes(x = Group, y = mean)) +
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape=23, size=4, fill = "white") +
+  scale_y_continuous(name = "mean(weight), time 8-64")
+
+
+```
+
+After removing outliers the among group variation is very small
+
+### 6.7 T test and Anova
+
+We cannot do T test with 3 groups! So let's just do linear model and anova. But note that this isn't a fibal analysis as it doesn't take i nto account the longitudial form of the data
+
+```{r}
+
+# Fit the linear model with the mean as the response 
+fit <- lm(mean ~ Time + Group, data = RATSL_S)
+
+# Compute the analysis of variance table for the fitted model with anova()
+anova(fit)
+
+```
+
+Both time and group are significant
+
+
+
+# PART II: Linear Mixed Effects Models
+
+
+### 6.8 Plot first
+
+
+```{r}
+dim(BPRSL)
+
+# Plot the BPRSL data
+ggplot(BPRSL, aes(x = week, y = bprs, group = subject, linetype = treatment))  +
+  facet_grid(. ~ treatment, labeller = label_both) +
+  geom_line(aes(linetype = treatment)) + scale_x_continuous(name = "week") + scale_y_continuous(name = "bprs") + theme(legend.position = "top")
+
+# group = treatment
+
+
+
+```
+
+
+### 6.9 Linear model
+
+Although, doesn't really apply to longitudial data set!
+
+```{r}
+# create a regression model RATS_reg
+BPRS_reg <- BPRSL %>% lm(bprs ~ week + treatment, data = .)
+
+# print out a summary of the model
+summary(BPRS_reg)
+```
+
+Week (and intercept) is significant, but the treatment isn't
+
+
+###6.10 The Random Intercept Model
+
+
+```{r}
+
+# Create a random intercept model
+BPRS_ref <- lmer(bprs ~ week + treatment + (1 | subject), data = BPRSL, REML = FALSE)
+
+# Print the summary of the model
+summary(BPRS_ref)
+
+```
+Quite large estimated variance of random effects (subject) indicating variation in the intercepts
+
+But let's compare to random intercept and random slope model to see if we need randon slope as well
+
+
+### 6.11 Random Intercept and Random Slope Model
+
+
+```{r}
+
+# create a random intercept and random slope model
+BPRS_ref1 <- lmer(bprs ~ week + treatment + (week | subject), data = BPRSL, REML = FALSE)
+
+# print a summary of the model
+summary(BPRS_ref1)
+
+# perform an ANOVA test on the two models
+anova(BPRS_ref1, BPRS_ref)
+
+```
+
+AIC is smaller with random slope and p value also significant indicating we should include the random slope in the model
+
+
+### 6.12 Random Intercept and Random Slope Model with interaction
+
+Finally, we can fit a random intercept and slope model that allows for a treatment × week interaction.
+
+
+```{r}
+
+# create a random intercept and random slope model with the interaction
+BPRS_ref2 <- lmer(bprs ~ week * treatment + (week | subject), data = BPRSL, REML = FALSE)
+
+# print a summary of the model
+summary(BPRS_ref2)
+
+# perform an ANOVA test on the two models
+anova(BPRS_ref2, BPRS_ref1)
+
+```
+
+
+The model with interaction has a little bit smaller AIC, butu since the difference is small (~1) and the p value is not significant lets use the more parsimonous model **without** interaction
+
+
+#### Draw the plot of BPRSL with the observed bprs values
+
+```{r}
+ggplot(BPRSL, aes(x = week, y = bprs, treatment = subject)) +
+  geom_line(aes(linetype = treatment)) +
+  scale_x_continuous(name = "week") +
+  scale_y_continuous(name = "Observed bprs") +
+  theme(legend.position = "top")
+```
+
+
+#### Plot fitted values
+
+Note! Based on the choces model without interaction!
+
+```{r}
+Fitted <- fitted(BPRS_ref1)
+
+# Create a new column fitted to BPRSL
+BPRSL <- BPRSL %>% mutate(fitted = Fitted)
+
+ggplot(BPRSL, aes(x = week, y = fitted, treatment = subject)) +
+  geom_line(aes(linetype = treatment)) +
+  scale_x_continuous(name = "week") +
+  scale_y_continuous(name = "Fitted bprs") +
+  theme(legend.position = "top")
+
+
+```
+
+
+Fitted values show that the treatment effect is very small! Could be argued that the difference between the treatments is meaningless, and the bprs score is mostly affected by the random effect of the individual (subject) and time (week)
+
+
+
+
+
